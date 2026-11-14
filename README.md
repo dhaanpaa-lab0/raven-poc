@@ -1,3 +1,3 @@
 ### RAVEN
 
-Your friendly local Report Automation and Viewing Environemnt
+Your friendly local Runbook Automation and Verification ENvironment
