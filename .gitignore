@@ -251,3 +251,10 @@ dist
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,intellij+all,dotenv,node
+
+# Airflow runtime logs
+airflow/logs/
+
+# DuckDB database files
+data/*.duckdb
+data/*.duckdb.wal

@@ -1,0 +1,19 @@
+id: duckdb_example
+namespace: raven.examples
+description: Writes to and reads from a DuckDB file in the shared ./data folder.
+
+tasks:
+  - id: create_table
+    type: io.kestra.plugin.jdbc.duckdb.Query
+    url: jdbc:duckdb:/data/kestra.duckdb
+    sql: CREATE OR REPLACE TABLE hello AS SELECT 42 AS answer, now() AS created_at
+
+  - id: read_table
+    type: io.kestra.plugin.jdbc.duckdb.Query
+    url: jdbc:duckdb:/data/kestra.duckdb
+    sql: SELECT * FROM hello
+    fetchType: FETCH
+
+  - id: log_result
+    type: io.kestra.plugin.core.log.Log
+    message: "{{ outputs.read_table.rows }}"

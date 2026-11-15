@@ -1,0 +1,77 @@
+# Kestra (standalone server) backed by PostgreSQL.
+#
+#   docker compose up -d
+#   UI: http://localhost:8080   (login: admin@raven.local / Raven123!)
+#
+# DuckDB: the bundled io.kestra.plugin.jdbc.duckdb plugin is available. ./data is mounted
+# at /data for database files; flows in ./kestra/flows are loaded on startup.
+#
+# Override credentials with KESTRA_ADMIN_USER / KESTRA_ADMIN_PASSWORD in a .env file.
+
+name: raven-kestra
+
+volumes:
+  kestra-postgres-data:
+  kestra-data:
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    volumes:
+      - kestra-postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: k3str4
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kestra:
+    image: kestra/kestra:latest
+    restart: unless-stopped
+    pull_policy: always
+    # Runs as root so Kestra can use the Docker socket for script tasks.
+    user: "root"
+    command: server standalone --flow-path /app/flows
+    volumes:
+      - kestra-data:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/kestra-wd:/tmp/kestra-wd
+      - ./data:/data
+      - ./kestra/flows:/app/flows
+    environment:
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://postgres:5432/kestra
+            driverClassName: org.postgresql.Driver
+            username: kestra
+            password: k3str4
+        kestra:
+          server:
+            basicAuth:
+              enabled: true
+              username: "${KESTRA_ADMIN_USER:-admin@raven.local}"
+              password: "${KESTRA_ADMIN_PASSWORD:-Raven123!}"
+          repository:
+            type: postgres
+          storage:
+            type: local
+            local:
+              basePath: "/app/storage"
+          queue:
+            type: postgres
+          tasks:
+            tmpDir:
+              path: /tmp/kestra-wd/tmp
+          url: http://localhost:8080/
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
