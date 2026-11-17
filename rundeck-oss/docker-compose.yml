@@ -1,0 +1,68 @@
+# Rundeck OSS (backed by MariaDB) + MongoDB + MariaDB + DuckDB CLI baked into the Rundeck image
+# UI: http://localhost:4440  login: admin / admin
+name: raven-rundeck
+
+services:
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: eval
+      MARIADB_USER: eval
+      MARIADB_PASSWORD: eval
+    ports: ["${MARIADB_PORT:-3309}:3306"]
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      # 00-rundeck.sql also creates the `rundeck` database used as Rundeck's store
+      - ../common/seed/mariadb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      retries: 10
+
+  mongodb:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: eval
+      MONGO_INITDB_ROOT_PASSWORD: eval
+    ports: ["${MONGO_PORT:-27317}:27017"]
+    volumes:
+      - mongo-data:/data/db
+      - ../common/seed/mongo:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      retries: 10
+
+  rundeck:
+    build: .
+    image: raven-rundeck:local
+    ports: ["${RUNDECK_PORT:-4440}:4440"]
+    environment:
+      RUNDECK_GRAILS_URL: http://localhost:${RUNDECK_PORT:-4440}
+      RUNDECK_SERVER_ADDRESS: 0.0.0.0
+      RUNDECK_DATABASE_DRIVER: org.mariadb.jdbc.Driver
+      RUNDECK_DATABASE_URL: jdbc:mariadb://mariadb:3306/rundeck?autoReconnect=true&useSSL=false
+      RUNDECK_DATABASE_USERNAME: eval
+      RUNDECK_DATABASE_PASSWORD: eval
+      # Env vars visible to job scripts
+      EVAL_MONGO_URI: mongodb://eval:eval@mongodb:27017/?authSource=admin
+      EVAL_MARIADB_HOST: mariadb
+      EVAL_MARIADB_USER: eval
+      EVAL_MARIADB_PASSWORD: eval
+      EVAL_MARIADB_DB: eval
+      EVAL_DUCKDB_PATH: /data/eval.duckdb
+    volumes:
+      - rundeck-data:/home/rundeck/server/data
+      - duckdb-data:/data
+      - ./scripts:/home/rundeck/eval-scripts:ro
+      - ./jobs:/home/rundeck/eval-jobs:ro
+    depends_on:
+      mariadb: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+
+volumes:
+  mariadb-data:
+  mongo-data:
+  rundeck-data:
+  duckdb-data:

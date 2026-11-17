@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  GREETING: Hello, world!
+
+tasks:
+  default:
+    desc: List defined tasks
+    cmds:
+      - task -l
+    silent: true
+
+  
+  airflow:up:
+    desc: Build and start the Airflow compose project
+    dir: airflow
+    cmds:
+      - docker compose up --build -d
+
+  airflow:down:
+    desc: Stop the Airflow compose project (volumes are kept)
+    dir: airflow
+    cmds:
+      - docker compose down
+
+  airflow:purge:
+    desc: Stop Airflow and delete its volumes, orphans and built image
+    dir: airflow
+    prompt: This deletes all Airflow, Postgres and Mongo data. Continue?
+    cmds:
+      - docker compose down --volumes --remove-orphans --rmi local
+
+  kestra:up:
+    desc: Start the Kestra compose project
+    dir: kestra
+    cmds:
+      - docker compose up -d
+
+  kestra:down:
+    desc: Stop the Kestra compose project (volumes are kept)
+    dir: kestra
+    cmds:
+      - docker compose down
+
+  kestra:purge:
+    desc: Stop Kestra and delete its volumes and orphans
+    dir: kestra
+    prompt: This deletes all Kestra, Postgres and Mongo data. Continue?
+    cmds:
+      - docker compose down --volumes --remove-orphans
+
+  windmill:up:
+    desc: Start the Windmill compose project
+    dir: windmill
+    cmds:
+      - docker compose up -d
+
+  windmill:down:
+    desc: Stop the Windmill compose project (volumes are kept)
+    dir: windmill
+    cmds:
+      - docker compose down
+
+  windmill:purge:
+    desc: Stop Windmill and delete its volumes and orphans
+    dir: windmill
+    prompt: This deletes all Windmill, MariaDB, Mongo and DuckDB data. Continue?
+    cmds:
+      - docker compose down --volumes --remove-orphans
+
+  rundeck:up:
+    desc: Start the Rundeck OSS compose project
+    dir: rundeck-oss
+    cmds:
+      - docker compose up --build -d
+
+  rundeck:down:
+    desc: Stop the Rundeck OSS compose project (volumes are kept)
+    dir: rundeck-oss
+    cmds:
+      - docker compose down
+
+  rundeck:purge:
+    desc: Stop Rundeck OSS and delete its volumes and orphans
+    dir: rundeck-oss
+    prompt: This deletes all Rundeck OSS, MariaDB, Mongo and DuckDB data. Continue?
+    cmds:
+      - docker compose down --volumes --remove-orphans --rmi local

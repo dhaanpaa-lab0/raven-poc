@@ -1,0 +1,10 @@
+# Import via UI: Project > Jobs > Upload Definition (YAML)
+- name: eval-etl
+  group: eval
+  description: MariaDB + MongoDB -> DuckDB
+  loglevel: INFO
+  sequence:
+    commands:
+      - scriptfile: /home/rundeck/eval-scripts/eval_etl.sh
+    keepgoing: false
+    strategy: node-first

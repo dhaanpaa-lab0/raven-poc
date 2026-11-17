@@ -1,0 +1,90 @@
+# Windmill (CE) + MongoDB + MariaDB + DuckDB (file on shared volume mounted at /data in workers)
+# UI: http://localhost:8000  default login: admin@windmill.dev / changeme (you are forced to change it)
+name: raven-windmill
+
+x-windmill-env: &windmill-env
+  DATABASE_URL: postgres://postgres:changeme@db/windmill?sslmode=disable
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: windmill
+    volumes: [windmill-db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  windmill-server:
+    image: ${WM_IMAGE:-ghcr.io/windmill-labs/windmill:main}
+    environment:
+      <<: *windmill-env
+      MODE: server
+    ports: ["${WINDMILL_PORT:-8000}:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  windmill-worker:
+    image: ${WM_IMAGE:-ghcr.io/windmill-labs/windmill:main}
+    environment:
+      <<: *windmill-env
+      MODE: worker
+      WORKER_GROUP: default
+    volumes:
+      - worker-cache:/tmp/windmill/cache
+      - duckdb-data:/data
+    depends_on:
+      db: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+      mariadb: { condition: service_healthy }
+
+  # Lightweight worker for native (REST/SQL/etc.) jobs
+  windmill-worker-native:
+    image: ${WM_IMAGE:-ghcr.io/windmill-labs/windmill:main}
+    environment:
+      <<: *windmill-env
+      MODE: worker
+      WORKER_GROUP: native
+      NUM_WORKERS: 4
+      SLEEP_QUEUE: 200
+    depends_on:
+      db: { condition: service_healthy }
+
+  mongodb:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: eval
+      MONGO_INITDB_ROOT_PASSWORD: eval
+    ports: ["${MONGO_PORT:-27217}:27017"]
+    volumes:
+      - mongo-data:/data/db
+      - ../common/seed/mongo:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      retries: 10
+
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: eval
+      MARIADB_USER: eval
+      MARIADB_PASSWORD: eval
+    ports: ["${MARIADB_PORT:-3308}:3306"]
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ../common/seed/mariadb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      retries: 10
+
+volumes:
+  windmill-db:
+  worker-cache:
+  mongo-data:
+  mariadb-data:
+  duckdb-data:

@@ -1,0 +1,120 @@
+# Apache Airflow 3 (LocalExecutor) + MongoDB + MariaDB + DuckDB (file on shared volume)
+name: raven-airflow
+
+x-airflow-common: &airflow-common
+  build: .
+  image: raven-airflow:local
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__FERNET_KEY: "eval-only-fernet-key-change-me-000000="
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__API_AUTH__JWT_SECRET: eval-only-jwt-secret-change-me-please-0123456789
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    # Eval convenience: no login prompt. Remove for anything shared.
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+    # Connection details consumed by the example DAG
+    EVAL_MONGO_URI: mongodb://eval:eval@mongodb:27017/?authSource=admin
+    EVAL_MARIADB_HOST: mariadb
+    EVAL_MARIADB_USER: eval
+    EVAL_MARIADB_PASSWORD: eval
+    EVAL_MARIADB_DB: eval
+    EVAL_DUCKDB_PATH: /opt/airflow/data/eval.duckdb
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - airflow-logs:/opt/airflow/logs
+    - duckdb-data:/opt/airflow/data
+  depends_on: &airflow-deps
+    postgres: { condition: service_healthy }
+    mongodb: { condition: service_healthy }
+    mariadb: { condition: service_healthy }
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: eval
+      MONGO_INITDB_ROOT_PASSWORD: eval
+    ports: ["${MONGO_PORT:-27117}:27017"]
+    volumes:
+      - mongo-data:/data/db
+      - ../common/seed/mongo:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      retries: 10
+
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: eval
+      MARIADB_USER: eval
+      MARIADB_PASSWORD: eval
+    ports: ["${MARIADB_PORT:-3307}:3306"]
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ../common/seed/mariadb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      retries: 10
+
+  airflow-init:
+    <<: *airflow-common
+    command: db migrate
+    restart: "no"
+
+  airflow-api-server:
+    <<: *airflow-common
+    command: api-server
+    ports: ["${AIRFLOW_PORT:-8080}:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v2/version"]
+      interval: 15s
+      retries: 10
+    depends_on:
+      <<: *airflow-deps
+      airflow-init: { condition: service_completed_successfully }
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      <<: *airflow-deps
+      airflow-init: { condition: service_completed_successfully }
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    depends_on:
+      <<: *airflow-deps
+      airflow-init: { condition: service_completed_successfully }
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    depends_on:
+      <<: *airflow-deps
+      airflow-init: { condition: service_completed_successfully }
+
+volumes:
+  postgres-data:
+  mongo-data:
+  mariadb-data:
+  airflow-logs:
+  duckdb-data:
